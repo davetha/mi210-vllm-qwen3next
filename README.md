@@ -41,6 +41,8 @@ hardware/model; see **[findings/dead-ends.md](findings/dead-ends.md)**.
 - **[findings/dead-ends.md](findings/dead-ends.md)** — what didn't work, and why (aiter, EP, NCCL, TurboQuant, LMCache, spec-dec, int8, fp8-mamba)
 - **[findings/aiter.md](findings/aiter.md)** — the aiter deep-dive (triangulated three ways)
 - **[findings/model-alternatives.md](findings/model-alternatives.md)** — standard-attention MoE swaps + CPU-hybrid frontier-MoE direction (llama.cpp)
+- **[findings/llamacpp-vs-vllm.md](findings/llamacpp-vs-vllm.md)** — same-model/same-quant llama.cpp vs vLLM, + the 235B CPU-hybrid frontier numbers
+- **[findings/multi-gpu-llamacpp.md](findings/multi-gpu-llamacpp.md)** — 2-card llama.cpp: native split faults/unsupported, RPC is the only stable path (+setup)
 - **[configs/](configs)** — the hand-tuned MoE config JSONs (single-card `N=512` + TP=2 `N=256`)
 - **[moe-tuning/](moe-tuning)** — patches to run `benchmark_moe.py --tune` single-GPU on ROCm
 
