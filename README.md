@@ -31,8 +31,15 @@ MI210 now**, and the AMD-prebuilt CDNA image gets you there with no build at all
   **v0.21**, so any ≥0.21 image has it. **0.25.2 ≈ 0.23**; the jump was leaving 0.11.2.
 - vLLM's advantage on the MI210 is **concurrency (~3.6× aggregate)**. Single-stream (≈53 t/s)
   still trails a tuned `llama.cpp` (~68 t/s). One user at a time → llama.cpp; many → vLLM.
-- **aiter** (AMD's optimized kernels) is **not usable on gfx90a** — keep `VLLM_ROCM_USE_AITER=0`.
-  vLLM falls back to the Triton paged-attention path, which is what these numbers use.
+- **aiter** (AMD's optimized kernels) now **builds and runs** on gfx90a/ROCm 7.14 (it JIT-compiles
+  the core module and self-skips unsupported flags — a real change from the old stack where it
+  crashed/wouldn't compile). **But it gives ~no gain for this int4 model**, because its heavy
+  kernels don't apply on gfx90a: aiter **MoE** doesn't support the model's int4 compressed-tensors
+  (WNA16) quant (it's fp8/fp4), so vLLM keeps the Triton MoE; and aiter **attention** isn't even an
+  offered backend on gfx90a (candidates are `ROCM_ATTN`/`TRITON_ATTN` only). Only aiter **RMSNorm**
+  engages → ~1%, and forcing the MoE/attention switches slightly *hurts* concurrency. **Keep
+  `VLLM_ROCM_USE_AITER=0`.** See [findings/aiter.md](findings/aiter.md). To actually use aiter's MoE
+  you'd need an **fp8** model (which for 80B needs ~2× MI210 via tensor-parallel) or MI300-class hardware.
 
 ---
 
