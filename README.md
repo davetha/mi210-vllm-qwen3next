@@ -14,13 +14,35 @@ MI210 now**, and the AMD-prebuilt CDNA image gets you there with no build at all
 
 ## The short version
 
-| vLLM | single-stream | 16 concurrent (agg) | 32 concurrent (agg) | how to get it |
+| Config | single-stream | 32 concurrent (agg) | KV cache | how to get it |
 |------|--------------:|--------------------:|--------------------:|---------------|
-| 0.11.2 (old) | 33 t/s | ~100 t/s | ~100 t/s | *crashed on first gen until 2 env workarounds* |
-| **0.23** | **52.8 t/s** | **225.6 t/s** | **346.2 t/s** | `docker pull` the AMD prebuilt CDNA image — no build |
-| 0.25.2 (self-built) | 53.1 t/s | 225.8 t/s | 358.9 t/s | build from source on gfx90a (recipe below) |
+| 0.11.2 (old) | 33 t/s | ~100 t/s | 10 GB | *crashed on first gen until 2 env workarounds* |
+| **0.23** prebuilt (1 card) | 52.8 t/s | 346.2 t/s | 10 GB | `docker pull` the AMD prebuilt CDNA image — no build |
+| 0.25.2 self-built (1 card) | 53.1 t/s | 358.9 t/s | 10 GB | build from source on gfx90a (recipe below) |
+| + hand-tuned MoE config | 51.6 t/s | 425.4 t/s | 10 GB | free — a hand-written config JSON, no autotune |
+| **TP=2 both cards + tuned config** | **55.1 t/s** | **620.5 t/s** | **32 GB** | `scripts/launch-tp2.sh` — the recommended setup |
+| **+ fp8 KV cache** | 53.3 t/s | ~neutral | 32 GB | 11× KV capacity (388K→4.4M tokens) for ~3% single-stream |
 
-*Measured single card, Qwen3-Next-80B-A3B-Thinking int4, 16K context, one forward-pass warmup.*
+*Qwen3-Next-80B-A3B-Thinking int4, 16K context. Aggregate scales to **~2340 t/s at 256 concurrent**
+with TP=2. See [findings/benchmarks.md](findings/benchmarks.md) for the full matrix.*
+
+### Best deployment (what we landed on)
+
+**TP=2 across both MI210s + hand-tuned MoE config + fp8 KV cache** → `scripts/launch-tp2.sh`.
+The two levers that mattered: a **newer vLLM** (≥0.23) and **tensor-parallel across both cards**
+(aggregates HBM bandwidth for the memory-bound MoE — wins even over a PCIe-only link). The MoE
+config is free (hand-written, no autotune). Everything else — aiter, Expert Parallel, NCCL tuning,
+TurboQuant, LMCache, int8/fp8 requant, speculative decoding — was a measured dead end on this
+hardware/model; see **[findings/dead-ends.md](findings/dead-ends.md)**.
+
+### Documentation index
+- **[findings/optimization-journey.md](findings/optimization-journey.md)** — the full story + tuning matrix
+- **[findings/benchmarks.md](findings/benchmarks.md)** — every measured number
+- **[findings/dead-ends.md](findings/dead-ends.md)** — what didn't work, and why (aiter, EP, NCCL, TurboQuant, LMCache, spec-dec, int8, fp8-mamba)
+- **[findings/aiter.md](findings/aiter.md)** — the aiter deep-dive (triangulated three ways)
+- **[findings/model-alternatives.md](findings/model-alternatives.md)** — standard-attention MoE swaps + CPU-hybrid frontier-MoE direction (llama.cpp)
+- **[configs/](configs)** — the hand-tuned MoE config JSONs (single-card `N=512` + TP=2 `N=256`)
+- **[moe-tuning/](moe-tuning)** — patches to run `benchmark_moe.py --tune` single-GPU on ROCm
 
 **Takeaways**
 - The old `ValueError: arange's range must be a power of 2` crash (from the non-power-of-2
