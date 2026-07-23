@@ -1,0 +1,31 @@
+# Build a newer vLLM for AMD Instinct MI210 (gfx90a / CDNA2) WITHOUT rebuilding torch.
+#
+# Trick: FROM the AMD-prebuilt CDNA image so we reuse its torch 2.11 + ROCm 7.14 + aiter
+# stack and only recompile vLLM's own CUDA/HIP kernels. ~15 min instead of ~3 hours.
+#
+#   docker build --build-arg VLLM_TAG=v0.25.1 -t vllm-gfx90a:0.25 .
+#
+FROM rocm/vllm:rocm7.14.0_cdna_ubuntu24.04_py3.14_pytorch_2.11.0_vllm_0.23.0
+
+ARG VLLM_TAG=v0.25.1
+ENV PYTORCH_ROCM_ARCH=gfx90a \
+    VLLM_TARGET_DEVICE=rocm \
+    MAX_JOBS=24 \
+    CMAKE_BUILD_PARALLEL_LEVEL=24
+
+WORKDIR /build
+RUN git clone --depth 1 --branch ${VLLM_TAG} https://github.com/vllm-project/vllm.git
+WORKDIR /build/vllm
+
+# Keep the image's already-installed torch (2.11+rocm7.14); strip the torch pin so pip
+# doesn't try to pull a fresh wheel.
+RUN python use_existing_torch.py
+
+# Compile + install vLLM's csrc for gfx90a against the existing torch.
+RUN pip install --no-build-isolation -e . -v
+
+# GOTCHA: vLLM 0.25.x pins `tensorizer==2.10.1`, which is broken on Python 3.14
+# (KeyError: 'crypto_stream_salsa20_NONCEBYTES' at import). Restore the working version.
+RUN pip install --no-cache-dir 'tensorizer==2.12.1'
+
+RUN python -c "import vllm, tensorizer; print('BUILT vllm', vllm.__version__, '| tensorizer', tensorizer.__version__)"

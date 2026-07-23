@@ -1,0 +1,11 @@
+# tuned MoE configs / local outputs
+out/
+*.local
+# editor / OS
+.DS_Store
+*.swp
+__pycache__/
+*.pyc
+
+# OMC operational state
+.omc/
